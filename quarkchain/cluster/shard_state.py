@@ -1052,12 +1052,21 @@ class ShardState:
         """
         self.db.put_minor_block_xshard_tx_list(h, tx_list)
 
-    def add_root_block(self, root_block):
+    def add_root_block(self, root_block: RootBlock):
         """ Add a root block.
         Make sure all cross shard tx lists of remote shards confirmed by the root block are in local db.
         Return True if the new block become head else False.
         Raise ValueError on any failure.
         """
+
+        def reward():
+            shard_size = self.branch.get_shard_size()
+            coinbase_address = root_block.header.coinbase_address
+            if coinbase_address.get_shard_id(shard_size) == self.shard_id:
+                amount = root_block.header.coinbase_amount
+                self.evm_state.delta_balance(coinbase_address.recipient, amount)
+                self.evm_state.commit()
+
         check(
             root_block.header.height
             > self.env.quark_chain_config.get_genesis_root_height(self.shard_id)
@@ -1160,6 +1169,7 @@ class ShardState:
                             root_block.header.height,
                         )
                     )
+            reward()
             return True
 
         check(
@@ -1170,6 +1180,7 @@ class ShardState:
                 ),
             )
         )
+        reward()
         return False
 
     def __is_neighbor(self, remote_branch: Branch):
